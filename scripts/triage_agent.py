@@ -97,12 +97,14 @@ Given a new issue and a list of existing open issues, you must:
 
 1. Check whether the new issue is a duplicate of an existing one.
    - If it clearly is the same issue, call mark_duplicate and stop — do not label or acknowledge further.
-   - If it seems related but could be distinct, call suggest_possible_duplicate, then continue with the rest of triage normally.
+   - If it seems related but could be distinct, call suggest_possible_duplicate. That comment
+     will serve as the acknowledgment too, so do NOT post a separate acknowledgment afterward.
 2. Otherwise, classify it by applying appropriate labels
    (bug, feature-request, question, documentation, needs-info, good-first-issue).
 3. If the issue is missing key info (steps to reproduce for bugs, use case for features, etc.),
    post a friendly comment asking for it.
-4. Always post a short acknowledgment comment so the author knows their issue was received.
+4. If no possible duplicate was flagged, always post a short acknowledgment comment so the
+   author knows their issue was received.
 
 Keep comments concise and friendly."""
 
