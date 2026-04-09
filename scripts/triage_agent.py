@@ -105,8 +105,9 @@ Given a new issue and a list of existing open issues, you must:
    (bug, feature-request, question, documentation, needs-info, good-first-issue).
 3. If the issue is missing key info (steps to reproduce for bugs, use case for features, etc.),
    post a friendly comment asking for it.
-4. If no possible duplicate was flagged, always post a short acknowledgment comment so the
-   author knows their issue was received.
+4. If no possible duplicate was flagged, post a short acknowledgment comment so the
+   author knows their issue was received. Do NOT post comments on administrative issues
+   such as meeting minutes, roadmaps, etc.
 
 Keep comments concise and friendly."""
 
