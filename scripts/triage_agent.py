@@ -1,29 +1,37 @@
-import os, json
+import os
 import anthropic
-from github import Github
+from github import Github, Auth
 
-gh = Github(os.environ["GITHUB_TOKEN"])
+# Setup
+
+gh = Github(auth=Auth.Token(os.environ["GITHUB_TOKEN"]))
 repo = gh.get_repo(os.environ["REPO_NAME"])
 issue = repo.get_issue(int(os.environ["ISSUE_NUMBER"]))
-
 client = anthropic.Anthropic()
 
-# tools Claude can use
-tools = [
+LATEST_ISSUES_LIMIT = 100
+
+# Tools
+
+TOOLS = [
     {
         "name": "apply_label",
-        "description": "Apply one or more labels to the issue. Use labels like: bug, feature-request, question, documentation, needs-info, good-first-issue.",
+        "description": (
+            "Apply one or more labels to the issue. "
+            "Use labels like: bug, feature-request, question, "
+            "documentation, needs-info, good-first-issue."
+        ),
         "input_schema": {
             "type": "object",
             "properties": {
                 "labels": {
                     "type": "array",
                     "items": {"type": "string"},
-                    "description": "List of labels to apply"
+                    "description": "List of labels to apply.",
                 }
             },
-            "required": ["labels"]
-        }
+            "required": ["labels"],
+        },
     },
     {
         "name": "post_comment",
@@ -31,18 +39,71 @@ tools = [
         "input_schema": {
             "type": "object",
             "properties": {
-                "body": {"type": "string", "description": "The comment text (markdown supported)"}
+                "body": {"type": "string", "description": "The comment text (markdown supported)."}
             },
-            "required": ["body"]
-        }
-    }
+            "required": ["body"],
+        },
+    },
+    {
+        "name": "mark_duplicate",
+        "description": (
+            "Mark this issue as a duplicate of an existing one. "
+            "Use this when the issue is clearly asking about the same thing as an open issue. "
+            "This will post a comment pointing to the original, however the issue will remain open for maintainers to address."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "original_issue_number": {
+                    "type": "integer",
+                    "description": "The issue number this is a duplicate of.",
+                },
+                "reason": {
+                    "type": "string",
+                    "description": "Brief explanation of why these issues are duplicates.",
+                },
+            },
+            "required": ["original_issue_number", "reason"],
+        },
+    },
+    {
+        "name": "suggest_possible_duplicate",
+        "description": (
+            "Use when an existing issue is related but not clearly the same thing. "
+            "Posts a comment pointing to the similar issue without closing anything. "
+            "Triage should still continue normally after calling this."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "related_issue_number": {
+                    "type": "integer",
+                    "description": "The issue number that might be related.",
+                },
+                "reason": {
+                    "type": "string",
+                    "description": "Brief explanation of why these issues seem related.",
+                },
+            },
+            "required": ["related_issue_number", "reason"],
+        },
+    },
 ]
 
-system_prompt = """You are an issue triage assistant for a GitHub repository.
-Given an issue, you must:
-1. Classify it by applying appropriate labels (bug, feature-request, question, documentation, needs-info, good-first-issue).
-2. If the issue is missing key info (steps to reproduce for bugs, use case for features, etc.), post a friendly comment asking for it.
-3. Always post a short acknowledgment comment letting the user know their issue was received.
+# System prompt
+
+SYSTEM_PROMPT = """You are an issue triage assistant for a GitHub repository.
+Given a new issue and a list of existing open issues, you must:
+
+1. Check whether the new issue is a duplicate of an existing one. If it clearly is,
+   call mark_duplicate — do not label or acknowledge it further. If it seems related,
+   call suggest_possible_duplicate.
+2. Otherwise, classify it by applying appropriate labels
+   (bug, feature-request, question, documentation, needs-info, good-first-issue).
+3. If the issue is missing key info (steps to reproduce for bugs, use case for features, etc.),
+   post a friendly comment asking for it.
+4. Always post a short acknowledgment comment so the author knows their issue was received.
+
 Keep comments concise and friendly."""
 
 # GitHub helpers
