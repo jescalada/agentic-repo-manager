@@ -18,8 +18,10 @@ TOOLS = [
         "name": "apply_label",
         "description": (
             "Apply one or more labels to the issue. "
-            "Use labels like: bug, feature-request, question, "
-            "documentation, needs-info, good-first-issue."
+            "Use labels like: automation, bug, dependencies, "
+            "documentation, enhancement, good-first-issue, "
+            "meeting, needs-info, plugins, protocol, question, "
+            "security, tech-debt, testing."
         ),
         "input_schema": {
             "type": "object",
@@ -161,8 +163,7 @@ def suggest_possible_duplicate(related_issue_number: int, reason: str) -> str:
     issue.create_comment(
         f"Hey! This might be related to #{related_issue_number} "
         f"({related.html_url}) — {reason}\n\n"
-        f"Leaving this open in case it's a distinct issue. Feel free to check "
-        f"if that one already covers what you're reporting!"
+        f"Feel free to check if that one already covers what you're reporting!"
     )
     return f"Flagged as possibly related to #{related_issue_number}."
 
