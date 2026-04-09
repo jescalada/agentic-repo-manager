@@ -45,55 +45,110 @@ Given an issue, you must:
 3. Always post a short acknowledgment comment letting the user know their issue was received.
 Keep comments concise and friendly."""
 
-user_message = f"""Please triage this GitHub issue:
+# GitHub helpers
 
-Title: {os.environ['ISSUE_TITLE']}
+def get_existing_issues(limit: int = LATEST_ISSUES_LIMIT) -> str:
+    """
+    Fetches the most recent open issues (excluding the current one)
+    and formats them into a string for the prompt.
+    """
+    open_issues = repo.get_issues(state="open")
+    lines = []
+    count = 0
+    for existing in open_issues:
+        if existing.number == issue.number:
+            continue
+        lines.append(
+            f"- #{existing.number}: {existing.title}\n"
+            f"  {(existing.body or '').strip()[:200]}"  # truncate long bodies
+        )
+        count += 1
+        if count >= limit:
+            break
+    return "\n".join(lines) if lines else "(no other open issues)"
 
-Body:
-{os.environ['ISSUE_BODY'] or '(no description provided)'}"""
 
-messages = [{"role": "user", "content": user_message}]
+def apply_label(labels: list[str]) -> str:
+    existing_label_names = [l.name for l in repo.get_labels()]
+    for label in labels:
+        if label not in existing_label_names:
+            repo.create_label(label, "ededed")
+    issue.add_to_labels(*labels)
+    return f"Applied labels: {labels}"
 
-# loop until all tool calls are done
-while True:
-    response = client.messages.create(
-        model="claude-sonnet-4-20250514",
-        max_tokens=1024,
-        system=system_prompt,
-        tools=tools,
-        messages=messages
+
+def post_comment(body: str) -> str:
+    issue.create_comment(body)
+    return "Comment posted."
+
+
+def mark_duplicate(original_issue_number: int, reason: str) -> str:
+    original = repo.get_issue(original_issue_number)
+    issue.create_comment(
+        f"Thanks for the report! This looks like a duplicate of #{original_issue_number} "
+        f"({original.html_url}).\n\n> {reason}\n\n"
+        f"Please edit this issue to add any distinguishing details if you believe it's not a duplicate."
+    )
+    issue.add_to_labels("duplicate")
+    return f"Marked as duplicate of #{original_issue_number}."
+
+
+# Tool dispatch
+
+def handle_tool_call(name: str, inputs: dict) -> str:
+    if name == "apply_label":
+        return apply_label(inputs["labels"])
+    elif name == "post_comment":
+        return post_comment(inputs["body"])
+    elif name == "mark_duplicate":
+        return mark_duplicate(inputs["original_issue_number"], inputs["reason"])
+    elif name == "suggest_possible_duplicate":
+        return suggest_possible_duplicate(inputs["related_issue_number"], inputs["reason"])
+    return f"Unknown tool: {name}"
+
+# Agentic loop
+
+def build_initial_message() -> str:
+    return (
+        f"Please triage this new GitHub issue:\n\n"
+        f"Title: {os.environ['ISSUE_TITLE']}\n"
+        f"Body:\n{os.environ.get('ISSUE_BODY') or '(no description provided)'}\n\n"
+        f"---\n"
+        f"Here are the currently open issues for duplicate detection:\n\n"
+        f"{get_existing_issues()}"
     )
 
-    # add assistant turn to history
-    messages.append({"role": "assistant", "content": response.content})
 
-    if response.stop_reason == "end_turn":
-        break
+def run_triage_agent():
+    messages = [{"role": "user", "content": build_initial_message()}]
 
-    tool_results = []
-    for block in response.content:
-        if block.type != "tool_use":
-            continue
+    while True:
+        response = client.messages.create(
+            model="claude-sonnet-4-20250514",
+            max_tokens=1024,
+            system=SYSTEM_PROMPT,
+            tools=TOOLS,
+            messages=messages,
+        )
 
-        result = ""
-        if block.name == "apply_label":
-            labels = block.input["labels"]
-            # create labels if they don't exist, then apply
-            existing = [l.name for l in repo.get_labels()]
-            for label in labels:
-                if label not in existing:
-                    repo.create_label(label, "ededed")
-            issue.add_to_labels(*labels)
-            result = f"Applied labels: {labels}"
+        messages.append({"role": "assistant", "content": response.content})
 
-        elif block.name == "post_comment":
-            issue.create_comment(block.input["body"])
-            result = "Comment posted."
+        if response.stop_reason == "end_turn":
+            break
 
-        tool_results.append({
-            "type": "tool_result",
-            "tool_use_id": block.id,
-            "content": result
-        })
+        tool_results = []
+        for block in response.content:
+            if block.type != "tool_use":
+                continue
+            result = handle_tool_call(block.name, block.input)
+            tool_results.append({
+                "type": "tool_result",
+                "tool_use_id": block.id,
+                "content": result,
+            })
 
-    messages.append({"role": "user", "content": tool_results})
+        messages.append({"role": "user", "content": tool_results})
+
+
+if __name__ == "__main__":
+    run_triage_agent()
