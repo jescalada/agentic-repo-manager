@@ -95,9 +95,9 @@ TOOLS = [
 SYSTEM_PROMPT = """You are an issue triage assistant for a GitHub repository.
 Given a new issue and a list of existing open issues, you must:
 
-1. Check whether the new issue is a duplicate of an existing one. If it clearly is,
-   call mark_duplicate — do not label or acknowledge it further. If it seems related,
-   call suggest_possible_duplicate.
+1. Check whether the new issue is a duplicate of an existing one.
+   - If it clearly is the same issue, call mark_duplicate and stop — do not label or acknowledge further.
+   - If it seems related but could be distinct, call suggest_possible_duplicate, then continue with the rest of triage normally.
 2. Otherwise, classify it by applying appropriate labels
    (bug, feature-request, question, documentation, needs-info, good-first-issue).
 3. If the issue is missing key info (steps to reproduce for bugs, use case for features, etc.),
@@ -154,18 +154,32 @@ def mark_duplicate(original_issue_number: int, reason: str) -> str:
     return f"Marked as duplicate of #{original_issue_number}."
 
 
+def suggest_possible_duplicate(related_issue_number: int, reason: str) -> str:
+    related = repo.get_issue(related_issue_number)
+    issue.create_comment(
+        f"Hey! This might be related to #{related_issue_number} "
+        f"({related.html_url}) — {reason}\n\n"
+        f"Leaving this open in case it's a distinct issue. Feel free to check "
+        f"if that one already covers what you're reporting!"
+    )
+    return f"Flagged as possibly related to #{related_issue_number}."
+
+
 # Tool dispatch
 
 def handle_tool_call(name: str, inputs: dict) -> str:
     if name == "apply_label":
-        return apply_label(inputs["labels"])
+        result = apply_label(inputs["labels"])
     elif name == "post_comment":
-        return post_comment(inputs["body"])
+        result = post_comment(inputs["body"])
     elif name == "mark_duplicate":
-        return mark_duplicate(inputs["original_issue_number"], inputs["reason"])
+        result = mark_duplicate(inputs["original_issue_number"], inputs["reason"])
     elif name == "suggest_possible_duplicate":
-        return suggest_possible_duplicate(inputs["related_issue_number"], inputs["reason"])
-    return f"Unknown tool: {name}"
+        result = suggest_possible_duplicate(inputs["related_issue_number"], inputs["reason"])
+    else:
+        result = f"Unknown tool: {name}"
+    print(f"Tool {name}: {result}")
+    return result
 
 # Agentic loop
 
