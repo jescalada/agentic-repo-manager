@@ -7,6 +7,7 @@ from github import Github, Auth
 gh = Github(auth=Auth.Token(os.environ["GITHUB_TOKEN"]))
 repo = gh.get_repo(os.environ["REPO_NAME"])
 pr = repo.get_pull(int(os.environ["PR_NUMBER"]))
+author = os.environ["AUTHOR_USERNAME"]
 client = anthropic.Anthropic()
 
 # Tools
