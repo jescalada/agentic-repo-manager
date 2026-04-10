@@ -1,4 +1,4 @@
-name: Issue Triage
+name: PR Quality Check
 on:
   pull_request:
     types: [opened, reopened]
@@ -7,7 +7,7 @@ jobs:
   pr_quality_check:
     runs-on: ubuntu-latest
     permissions:
-      issues: write
+      pull-requests: write
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
