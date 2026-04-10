@@ -56,7 +56,8 @@ Important rules:
 - If everything looks good, stay silent. Do not post a comment just to say things look fine.
 - Be warm and constructive, never demanding. Remember this may be someone's first open-source contribution.
 - When referencing CONTRIBUTING.md requirements, be specific — quote or paraphrase the rule,
-  don't just say "please read the contributing guide"."""
+  don't just say "please read the contributing guide".
+- Most importantly, be as succint as possible."""
 
 # GitHub helpers
 
