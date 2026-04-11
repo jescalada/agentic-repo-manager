@@ -7,6 +7,7 @@ from github import Github, Auth
 gh = Github(auth=Auth.Token(os.environ["GITHUB_TOKEN"]))
 repo = gh.get_repo(os.environ["REPO_NAME"])
 pr = repo.get_pull(int(os.environ["PR_NUMBER"]))
+author = os.environ["AUTHOR_USERNAME"]
 client = anthropic.Anthropic()
 
 # Tools
@@ -55,7 +56,8 @@ Important rules:
 - If everything looks good, stay silent. Do not post a comment just to say things look fine.
 - Be warm and constructive, never demanding. Remember this may be someone's first open-source contribution.
 - When referencing CONTRIBUTING.md requirements, be specific — quote or paraphrase the rule,
-  don't just say "please read the contributing guide"."""
+  don't just say "please read the contributing guide".
+- Most importantly, be as succint as possible."""
 
 # GitHub helpers
 
