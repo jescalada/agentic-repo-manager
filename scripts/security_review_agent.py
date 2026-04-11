@@ -98,7 +98,7 @@ def find_previous_security_comment() -> object | None:
 def post_or_update_comment(body: str):
     """
     If a previous security review comment exists, edit it in place.
-    Otherwise post a new one. This keeps the PR timeline clean.
+    Otherwise post a new one to keep the PR timeline clean.
     """
     existing = find_previous_security_comment()
     if existing:
@@ -135,8 +135,7 @@ TOOLS = [
 
 def handle_tool_call(name: str, inputs: dict) -> str:
     if name == "post_security_review":
-        # Prepend a consistent header so find_previous_security_comment() can
-        # reliably identify review comments across runs.
+        # Prepend a header to identify review comments across runs
         body = f"## 🔒 Automated Security Review\n\n{inputs['body']}"
         post_or_update_comment(body)
         return "Security review comment posted."
