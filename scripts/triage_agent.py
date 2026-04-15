@@ -1,5 +1,6 @@
 import os
-import anthropic
+import json
+import litellm
 from github import Github, Auth
 
 # Setup
@@ -7,87 +8,101 @@ from github import Github, Auth
 gh = Github(auth=Auth.Token(os.environ["GITHUB_TOKEN"]))
 repo = gh.get_repo(os.environ["REPO_NAME"])
 issue = repo.get_issue(int(os.environ["ISSUE_NUMBER"]))
-client = anthropic.Anthropic()
 
 LATEST_ISSUES_LIMIT = 100
+MODEL = os.environ["MODEL"]
+
+validate_environment_variables()
 
 # Tools
 
 TOOLS = [
     {
-        "name": "apply_label",
-        "description": (
-            "Apply one or more labels to the issue. "
-            "Use labels like: automation, bug, dependencies, "
-            "documentation, enhancement, good-first-issue, "
-            "meeting, needs-info, plugins, protocol, question, "
-            "security, tech-debt, testing."
-        ),
-        "input_schema": {
-            "type": "object",
-            "properties": {
-                "labels": {
-                    "type": "array",
-                    "items": {"type": "string"},
-                    "description": "List of labels to apply.",
-                }
+        "type": "function",
+        "function": {
+            "name": "apply_label",
+            "description": (
+                "Apply one or more labels to the issue. "
+                "Use labels like: automation, bug, dependencies, "
+                "documentation, enhancement, good-first-issue, "
+                "meeting, needs-info, plugins, protocol, question, "
+                "security, tech-debt, testing."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "labels": {
+                        "type": "array",
+                        "items": {"type": "string"},
+                        "description": "List of labels to apply.",
+                    }
+                },
+                "required": ["labels"],
             },
-            "required": ["labels"],
         },
     },
     {
-        "name": "post_comment",
-        "description": "Post a comment on the issue, e.g. to ask for clarification or acknowledge receipt.",
-        "input_schema": {
-            "type": "object",
-            "properties": {
-                "body": {"type": "string", "description": "The comment text (markdown supported)."}
+        "type": "function",
+        "function": {
+            "name": "post_comment",
+            "description": "Post a comment on the issue, e.g. to ask for clarification or acknowledge receipt.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "body": {"type": "string", "description": "The comment text (markdown supported)."}
+                },
+                "required": ["body"],
             },
-            "required": ["body"],
         },
     },
     {
-        "name": "mark_duplicate",
-        "description": (
-            "Mark this issue as a duplicate of an existing one. "
-            "Use this when the issue is clearly asking about the same thing as an open issue. "
-            "This will post a comment pointing to the original, however the issue will remain open for maintainers to address."
-        ),
-        "input_schema": {
-            "type": "object",
-            "properties": {
-                "original_issue_number": {
-                    "type": "integer",
-                    "description": "The issue number this is a duplicate of.",
+        "type": "function",
+        "function": {
+            "name": "mark_duplicate",
+            "description": (
+                "Mark this issue as a duplicate of an existing one. "
+                "Use this when the issue is clearly asking about the same thing as an open issue. "
+                "Post a comment pointing to the original issue without closing anything."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "original_issue_number": {
+                        "type": "integer",
+                        "description": "The issue number this is a duplicate of.",
+                    },
+                    "reason": {
+                        "type": "string",
+                        "description": "Brief explanation of why these issues are duplicates.",
+                    },
                 },
-                "reason": {
-                    "type": "string",
-                    "description": "Brief explanation of why these issues are duplicates.",
-                },
+                "required": ["original_issue_number", "reason"],
             },
-            "required": ["original_issue_number", "reason"],
         },
     },
     {
-        "name": "suggest_possible_duplicate",
-        "description": (
-            "Use when an existing issue is related but not clearly the same thing. "
-            "Posts a comment pointing to the similar issue without closing anything. "
-            "Triage should still continue normally after calling this."
-        ),
-        "input_schema": {
-            "type": "object",
-            "properties": {
-                "related_issue_number": {
-                    "type": "integer",
-                    "description": "The issue number that might be related.",
+        "type": "function",
+        "function": {
+            "name": "suggest_possible_duplicate",
+            "description": (
+                "Use when an existing issue is related but not clearly the same thing. "
+                "Posts a comment pointing to the similar issue without closing anything."
+                "Continue triage normally after posting the comment."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "related_issue_number": {
+                        "type": "integer",
+                        "description": "The issue number that might be related.",
+                    },
+                    "reason": {
+                        "type": "string",
+                        "description": "Brief explanation of why these issues seem related.",
+                    },
                 },
-                "reason": {
-                    "type": "string",
-                    "description": "Brief explanation of why these issues seem related.",
-                },
+                "required": ["related_issue_number", "reason"],
             },
-            "required": ["related_issue_number", "reason"],
         },
     },
 ]
@@ -110,6 +125,12 @@ Given a new issue and a list of existing open issues, you must:
    such as meeting minutes, roadmaps, etc.
 
 Keep comments concise and friendly."""
+
+
+def validate_environment_variables():
+    for env_var in ["GITHUB_TOKEN", "REPO_NAME", "ISSUE_NUMBER", "ISSUE_TITLE", "ISSUE_BODY", "MODEL"]:
+        if not os.environ[env_var]:
+            raise ValueError(f"{env_var} is not set")
 
 # GitHub helpers
 
@@ -199,34 +220,36 @@ def build_initial_message() -> str:
 
 
 def run_triage_agent():
-    messages = [{"role": "user", "content": build_initial_message()}]
+    messages = [
+        {"role": "system", "content": SYSTEM_PROMPT},
+        {"role": "user", "content": build_initial_message()},
+    ]
 
     while True:
-        response = client.messages.create(
-            model="claude-sonnet-4-20250514",
-            max_tokens=1024,
-            system=SYSTEM_PROMPT,
-            tools=TOOLS,
+        response = litellm.completion(
+            model=MODEL,
             messages=messages,
+            tools=TOOLS,
         )
 
-        messages.append({"role": "assistant", "content": response.content})
+        message = response.choices[0].message
+        messages.append(message.model_dump(exclude_none=True))
 
-        if response.stop_reason == "end_turn":
+        finish_reason = response.choices[0].finish_reason
+        if finish_reason == "stop" or not message.tool_calls:
             break
 
         tool_results = []
-        for block in response.content:
-            if block.type != "tool_use":
-                continue
-            result = handle_tool_call(block.name, block.input)
+        for tool_call in message.tool_calls:
+            inputs = json.loads(tool_call.function.arguments)
+            result = handle_tool_call(tool_call.function.name, inputs)
             tool_results.append({
-                "type": "tool_result",
-                "tool_use_id": block.id,
+                "role": "tool",
+                "tool_call_id": tool_call.id,
                 "content": result,
             })
 
-        messages.append({"role": "user", "content": tool_results})
+        messages.extend(tool_results)
 
 
 if __name__ == "__main__":
