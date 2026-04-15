@@ -12,7 +12,13 @@ issue = repo.get_issue(int(os.environ["ISSUE_NUMBER"]))
 LATEST_ISSUES_LIMIT = 100
 MODEL = os.environ["MODEL"]
 
-validate_environment_variables()
+for env_var in ["GITHUB_TOKEN", "REPO_NAME", "ISSUE_NUMBER", "ISSUE_TITLE", "ISSUE_BODY", "MODEL"]:
+    if not os.environ[env_var]:
+        raise ValueError(f"{env_var} is not set")
+
+valid_api_keys = ["ANTHROPIC_API_KEY", "OPENAI_API_KEY", "GEMINI_API_KEY"]
+if not any(os.environ.get(api_key) for api_key in valid_api_keys):
+    raise ValueError("No API key is set")
 
 # Tools
 
@@ -125,12 +131,6 @@ Given a new issue and a list of existing open issues, you must:
    such as meeting minutes, roadmaps, etc.
 
 Keep comments concise and friendly."""
-
-
-def validate_environment_variables():
-    for env_var in ["GITHUB_TOKEN", "REPO_NAME", "ISSUE_NUMBER", "ISSUE_TITLE", "ISSUE_BODY", "MODEL"]:
-        if not os.environ[env_var]:
-            raise ValueError(f"{env_var} is not set")
 
 # GitHub helpers
 
