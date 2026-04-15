@@ -1,5 +1,6 @@
 import os
-import anthropic
+import json
+import litellm
 from github import Github, Auth
 
 # Setup
@@ -7,7 +8,16 @@ from github import Github, Auth
 gh = Github(auth=Auth.Token(os.environ["GITHUB_TOKEN"]))
 repo = gh.get_repo(os.environ["REPO_NAME"])
 pr = repo.get_pull(int(os.environ["PR_NUMBER"]))
-client = anthropic.Anthropic()
+
+MODEL = os.environ["MODEL"]
+for env_var in ["GITHUB_TOKEN", "REPO_NAME", "PR_NUMBER", "MODEL"]:
+    if not os.environ[env_var]:
+        raise ValueError(f"{env_var} is not set")
+
+valid_api_keys = ["ANTHROPIC_API_KEY", "OPENAI_API_KEY", "GEMINI_API_KEY"]
+if not any(os.environ.get(api_key) for api_key in valid_api_keys):
+    raise ValueError("No API key is set")
+
 
 # Exclude files that are not useful for security analysis
 IGNORED_FILENAMES = {
@@ -112,21 +122,24 @@ def post_or_update_comment(body: str):
 
 TOOLS = [
     {
-        "name": "post_security_review",
-        "description": (
-            "Post the security review findings as a comment on the PR. "
-            "Call this once when your analysis is complete. "
-            "If there are no findings, still call this to confirm the review ran."
-        ),
-        "input_schema": {
-            "type": "object",
-            "properties": {
-                "body": {
-                    "type": "string",
-                    "description": "The full markdown comment body to post on the PR.",
-                }
+        "type": "function",
+        "function": {
+            "name": "post_security_review",
+            "description": (
+                "Post the security review findings as a comment on the PR. "
+                "Call this once when your analysis is complete. "
+                "If there are no findings, still call this to confirm the review ran."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "body": {
+                        "type": "string",
+                        "description": "The full markdown comment body to post on the PR.",
+                    }
+                },
+                "required": ["body"],
             },
-            "required": ["body"],
         },
     }
 ]
@@ -161,39 +174,40 @@ def build_initial_message() -> str:
 
 
 def run_security_review_agent():
-    messages = [{"role": "user", "content": build_initial_message()}]
+    messages = [
+        {"role": "system", "content": SYSTEM_PROMPT},
+        {"role": "user", "content": build_initial_message()},
+    ]
 
     while True:
-        response = client.messages.create(
-            model="claude-sonnet-4-20250514",
-            max_tokens=1024,
-            system=SYSTEM_PROMPT,
-            tools=TOOLS,
+        response = litellm.completion(
+            model=MODEL,
             messages=messages,
+            tools=TOOLS,
         )
 
-        for block in response.content:
-            if block.type == "text" and block.text:
-                print(f"[agent] {block.text}")
+        message = response.choices[0].message
 
-        messages.append({"role": "assistant", "content": response.content})
+        if message.content:
+            print(f"[agent] {message.content}")
 
-        if response.stop_reason == "end_turn":
+        messages.append(message.model_dump(exclude_none=True))
+
+        if response.choices[0].finish_reason == "stop" or not message.tool_calls:
             break
 
         tool_results = []
-        for block in response.content:
-            if block.type != "tool_use":
-                continue
-            result = handle_tool_call(block.name, block.input)
-            print(f"[tool] {block.name}: {result}")
+        for tool_call in message.tool_calls:
+            inputs = json.loads(tool_call.function.arguments)
+            result = handle_tool_call(tool_call.function.name, inputs)
+            print(f"[tool] {tool_call.function.name}: {result}")
             tool_results.append({
-                "type": "tool_result",
-                "tool_use_id": block.id,
+                "role": "tool",
+                "tool_call_id": tool_call.id,
                 "content": result,
             })
 
-        messages.append({"role": "user", "content": tool_results})
+        messages.extend(tool_results)
 
 
 if __name__ == "__main__":
