@@ -63,17 +63,13 @@ Rules:
 
 When posting a comment, always use this exact structure (omit sections that don't apply):
 
-**Welcome** (first-time contributors only)
-<one sentence greeting>
+<one sentence greeting> (first-time contributors only)
 
-**Description**
 <what is unclear and what to add>
 
-**Linked issue**
 <ask to link or create an issue>
 
-**Contributing guidelines**
-<quote the rule, then explain what needs to change>"""
+<quote rule from CONTRIBUTING.md, then explain what needs to change>"""
 
 # GitHub helpers
 

@@ -50,16 +50,19 @@ No emojis.
 
 Use this exact format:
 
-**Summary**
+### Summary
 <one sentence: either "No security issues found." or a brief description of what was found>
 
-**Findings** (omit section if none)
+### Findings (omit section if none)
 
 **<filename>**
+<finding type>
 <finding description>
+<finding code snippet>
+<recommended fix>
 
-**<filename>**
-<finding description>"""
+... (repeat for each finding)
+"""
 
 # GitHub helpers
 
