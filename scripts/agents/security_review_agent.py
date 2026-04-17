@@ -2,6 +2,7 @@ import os
 import json
 import litellm
 from github import Github, Auth
+from helpers import validate_env_vars, validate_api_keys, run_agent
 
 # Setup
 
@@ -10,31 +11,22 @@ repo = gh.get_repo(os.environ["REPO_NAME"])
 pr = repo.get_pull(int(os.environ["PR_NUMBER"]))
 
 MODEL = os.environ["MODEL"]
-for env_var in ["GITHUB_TOKEN", "REPO_NAME", "PR_NUMBER", "MODEL"]:
-    if not os.environ[env_var]:
-        raise ValueError(f"{env_var} is not set")
+validate_env_vars(["GITHUB_TOKEN", "REPO_NAME", "PR_NUMBER", "MODEL"])
+validate_api_keys()
 
-valid_api_keys = ["ANTHROPIC_API_KEY", "OPENAI_API_KEY", "GEMINI_API_KEY"]
-if not any(os.environ.get(api_key) for api_key in valid_api_keys):
-    raise ValueError("No API key is set")
+IGNORED_FILENAMES = set(os.environ.get(
+    "IGNORED_FILENAMES",
+    "package-lock.json,yarn.lock,poetry.lock,Gemfile.lock,Cargo.lock,composer.lock,pnpm-lock.yaml,pip.lock"
+).split(","))
 
-
-# Exclude files that are not useful for security analysis
-IGNORED_FILENAMES = {
-    "package-lock.json",
-    "yarn.lock",
-    "poetry.lock",
-    "Gemfile.lock",
-    "Cargo.lock",
-    "composer.lock",
-    "pnpm-lock.yaml",
-    "pip.lock",
-}
-
-IGNORED_EXTENSIONS = {".lock", ".sum"}
+# Extensions must include a leading dot
+IGNORED_EXTENSIONS = set(os.environ.get(
+    "IGNORED_EXTENSIONS",
+    ".lock,.sum"
+).split(","))
 
 # Truncate very large diffs like generated files to prevent bloating the prompt
-MAX_PATCH_CHARS_PER_FILE = 3000
+MAX_PATCH_CHARS_PER_FILE = int(os.environ.get("MAX_PATCH_CHARS_PER_FILE", 3000))
 
 # System prompt
 
@@ -182,37 +174,7 @@ def run_security_review_agent():
         {"role": "system", "content": SYSTEM_PROMPT},
         {"role": "user", "content": build_initial_message()},
     ]
-
-    while True:
-        response = litellm.completion(
-            model=MODEL,
-            messages=messages,
-            tools=TOOLS,
-            temperature=0,
-        )
-
-        message = response.choices[0].message
-
-        if message.content:
-            print(f"[agent] {message.content}")
-
-        messages.append(message.model_dump(exclude_none=True))
-
-        if response.choices[0].finish_reason == "stop" or not message.tool_calls:
-            break
-
-        tool_results = []
-        for tool_call in message.tool_calls:
-            inputs = json.loads(tool_call.function.arguments)
-            result = handle_tool_call(tool_call.function.name, inputs)
-            print(f"[tool] {tool_call.function.name}: {result}")
-            tool_results.append({
-                "role": "tool",
-                "tool_call_id": tool_call.id,
-                "content": result,
-            })
-
-        messages.extend(tool_results)
+    run_agent(messages, TOOLS, handle_tool_call, MODEL)
 
 
 if __name__ == "__main__":
