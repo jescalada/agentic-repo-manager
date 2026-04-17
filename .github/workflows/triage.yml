@@ -28,4 +28,4 @@ jobs:
           REPO_NAME: ${{ github.repository }}
           ISSUE_TITLE: ${{ github.event.issue.title }}
           ISSUE_BODY: ${{ github.event.issue.body }}
-        run: python scripts/triage_agent.py
+        run: python scripts/agents/triage_agent.py

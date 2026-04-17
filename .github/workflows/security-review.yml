@@ -1,6 +1,6 @@
 name: Security Review
 on:
-  pull_request:
+  pull_request_target:
     types: [opened, reopened]
   issue_comment:
     types: [created]
@@ -39,4 +39,4 @@ jobs:
           REPO_NAME: ${{ github.repository }}
           PR_NUMBER: ${{ github.event.pull_request.number || github.event.issue.number }}
           TRIGGER: ${{ github.event_name }}
-        run: python scripts/security_review_agent.py
+        run: python scripts/agents/security_review_agent.py
